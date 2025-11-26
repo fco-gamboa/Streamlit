@@ -1,96 +1,119 @@
 import streamlit as st
+import numpy as np
+from sklearn.preprocessing import Normalizer
 from tensorflow.keras import Sequential
+from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import Embedding, Dense, GlobalAveragePooling1D
 import pickle
 
-st.title("Modèle Word2Vec")
+st.title("🔤 Word2Vec Explorer")
 
 #-----------------------------------------------
-# Load the Model
+# Load ONLY ONCE the tokenizer maps (word2idx, idx2word) and the Model
 #-----------------------------------------------
+@st.cache_resource
+def get_model():
+    vocab_size = 72541
+    embedding_dim = 300
+    model = Sequential([
+        Embedding(vocab_size, embedding_dim),
+        GlobalAveragePooling1D(),
+        Dense(vocab_size, activation='softmax')
+    ])
+    model = load_model("word2vec_cbow.keras")
+    #model.load_weights("word2vec_cbow.h5")
+    return model
 
-with open("word2idx.pkl", "rb") as f:
-    word2idx = pickle.load(f)
-with open("idx2word.pkl", "rb") as f:
-    idx2word = pickle.load(f)
+@st.cache_resource
+def load_mappings():
+    with open("word2idx.pkl", "rb") as f:
+        word2idx = pickle.load(f)
+    with open("idx2word.pkl", "rb") as f:
+        idx2word = pickle.load(f)
+    return word2idx, idx2word
 
-vocab_size = len(word2idx) + 1
-
-
-embedding_dim = 300
-model = Sequential()
-model.add(Embedding(vocab_size, embedding_dim))
-model.add(GlobalAveragePooling1D())
-model.add(Dense(vocab_size, activation='softmax'))
-
-model.load_weights("word2vec.h5")
+model = get_model()
+word2idx, idx2word = load_mappings()
+vectors = model.layers[0].get_weights()[0]
 
 #-----------------------------------------------
-# Fonctions to compute and find Similarity
+# Similarity functions
 #-----------------------------------------------
-vectors = model.layers[0].trainable_weights[0].numpy()
-
-import numpy as np
-from sklearn.preprocessing import Normalizer
-
 def dot_product(vec1, vec2):
-    return np.sum((vec1*vec2))
+    return np.sum(vec1 * vec2)
 
 def cosine_similarity(vec1, vec2):
-    return dot_product(vec1, vec2)/np.sqrt(dot_product(vec1, vec1)*dot_product(vec2, vec2))
+    return dot_product(vec1, vec2) / np.sqrt(dot_product(vec1, vec1) * dot_product(vec2, vec2))
 
 def find_closest(word_index, vectors, number_closest):
-    list1=[]
+    results = []
     query_vector = vectors[word_index]
-    for index, vector in enumerate(vectors):
-        if not np.array_equal(vector, query_vector):
-            dist = cosine_similarity(vector, query_vector)
-            list1.append([dist,index])
-    return np.asarray(sorted(list1,reverse=True)[:number_closest])
 
-def compare(index_word1, index_word2, index_word3, vectors, number_closest):
-    list1=[]
-    query_vector = vectors[index_word1] - vectors[index_word2] + vectors[index_word3]
+    for index, vector in enumerate(vectors):
+        if index != word_index:
+            dist = cosine_similarity(query_vector, vector)
+            results.append((dist, index))
+
+    results = sorted(results, reverse=True)[:number_closest]
+    return results
+
+def compare(idx1, idx2, idx3, vectors, number_closest):
     normalizer = Normalizer()
-    query_vector =  normalizer.fit_transform([query_vector], 'l2')
-    query_vector= query_vector[0]
+    query_vec = vectors[idx1] - vectors[idx2] + vectors[idx3]
+    query_vec = normalizer.fit_transform([query_vec])[0]
+
+    results = []
     for index, vector in enumerate(vectors):
-        if not np.array_equal(vector, query_vector):
-            dist = cosine_similarity(vector, query_vector)
-            list1.append([dist,index])
-    return np.asarray(sorted(list1,reverse=True)[:number_closest])
+        dist = cosine_similarity(query_vec, vector)
+        results.append((dist, index))
 
-def print_closest(word, number=10):
-    index_closest_words = find_closest(word2idx[word], vectors, number)
-    for index_word in index_closest_words :
-        print(idx2word[index_word[1]]," -- ",index_word[0])
-
-#-----------------------------------------------
-# THE APP : 
-'''FUNCTIONS:
-- Predict the sentiment of a phrase
--  '''
-#-----------------------------------------------
-st.header('Review Sentiment Prediction')
-review= st.text_input('Enter a review:')
-
-sentiment = model.predict(review)
-
-if sentiment:
-    st.write(f'Sentiment:{sentiment}')
-
-st.header('Arithmetic ')
+    results = sorted(results, reverse=True)[:number_closest]
+    return results
 
 
+# ================================================
+#            🔍 Similar Words Explorer
+# ================================================
+st.header("🔎 Trouver les mots similaires")
+
+word = st.selectbox("Choisissez un mot :", list(word2idx.keys()))
+num_similar = st.slider("Nombre de mots similaires :", 5, 30, 10)
+
+if st.button("Afficher les mots similaires"):
+    st.subheader(f"Mots les plus proches de : **{word}**")
+    closest_words = find_closest(word2idx[word], vectors, num_similar)
+
+    for dist, idx in closest_words:
+        st.write(f"**{idx2word[idx]}** — similarity: `{dist:.4f}`")
 
 
-word= st.text_input('Enter a word:')
+# ================================================
+#            🧮 Semantic Word Arithmetic
+# ================================================
+st.header("🧠 Calcul sémantique : a - b + c = ?")
 
-num_closest= st.number_input('Choose the number of similar words')
-st.write(print_closest(word, num_closest)) 
+col1, col2, col3 = st.columns(3)
 
+with col1:
+    word_a = st.selectbox("a", list(word2idx.keys()), key="a")
 
+with col2:
+    word_b = st.selectbox("b", list(word2idx.keys()), key="b")
 
+with col3:
+    word_c = st.selectbox("c", list(word2idx.keys()), key="c")
 
+num_results = st.slider("Nombre de résultats :", 3, 20, 5)
 
+if st.button("Calculer analogie"):
+    st.subheader(f"Résultat de : **{word_a} - {word_b} + {word_c}**")
+    results = compare(
+        word2idx[word_a], 
+        word2idx[word_b], 
+        word2idx[word_c],
+        vectors,
+        num_results
+    )
 
+    for dist, idx in results:
+        st.write(f"**{idx2word[idx]}** — similarity: `{dist:.4f}`")

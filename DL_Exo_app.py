@@ -1,9 +1,10 @@
 import streamlit as st
 import numpy as np
 from sklearn.preprocessing import Normalizer
-from tensorflow.keras import Sequential
-from tensorflow.keras.models import load_model
-from tensorflow.keras.layers import Embedding, Dense, GlobalAveragePooling1D
+import keras 
+from keras import Sequential
+#from tensorflow.keras.models import load_model
+from keras.layers import Embedding, Dense, GlobalAveragePooling1D
 import pickle
 
 st.title("🔤 Word2Vec Explorer")
@@ -20,7 +21,7 @@ def get_model():
         GlobalAveragePooling1D(),
         Dense(vocab_size, activation='softmax')
     ])
-    model = load_model("word2vec_cbow.keras")
+    model = keras.models.load_model("word2vec_cbow.keras")
     #model.load_weights("word2vec_cbow.h5")
     return model
 

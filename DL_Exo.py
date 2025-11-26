@@ -3,11 +3,10 @@ import numpy as np
 import re
 import unicodedata
 import nltk
-import tensorflow as tf
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Embedding, Dense, GlobalAveragePooling1D
+from keras import Sequential
+from keras.layers import Embedding, Dense, GlobalAveragePooling1D
 from tqdm import tqdm
 
 # ------------------------------------------------
@@ -140,7 +139,3 @@ model.fit(X, y, batch_size=128, epochs=10)
 # ------------------------------------------------
 model.save("word2vec_cbow.keras") # not h5 for the full model in a Mac ( h5 is depricated)
 print("Model saved!")
-
-
-
-
